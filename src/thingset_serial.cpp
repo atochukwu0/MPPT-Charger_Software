@@ -41,6 +41,12 @@ extern ThingSet ts;
 extern ts_pub_channel_t pub_channels[];
 extern const int pub_channel_serial;
 
+#ifdef CAN_ENABLED
+extern const int PUB_CHANNEL_CAN;
+extern void can_process_outbox();
+#endif
+
+
 void thingset_serial_init(Serial* s)
 {
 #ifdef UART_SERIAL_ENABLED
@@ -59,7 +65,11 @@ void thingset_serial_process_asap()
 #ifdef USB_SERIAL_ENABLED
     usb_serial_process();
 #endif
+#ifdef CAN_ENABLED
+    can_process_outbox();
+#endif
 }
+
 
 void thingset_serial_process_1s()
 {
@@ -68,6 +78,11 @@ void thingset_serial_process_1s()
 #endif
 #ifdef USB_SERIAL_ENABLED
     usb_serial_pub();
+#endif
+
+#ifdef CAN_ENABLED
+    ts.pub_msg_can(PUB_CHANNEL_CAN);
+    can_process_outbox();
 #endif
 
     fflush(stdout);
@@ -79,6 +94,7 @@ static bool uart_serial_command_flag = false;
 
 void uart_serial_isr()
 {
+    #if 1
     while (ser_uart->readable() && uart_serial_command_flag == false) {
         if (req_uart_pos < sizeof(buf_req_uart)) {
             buf_req_uart[req_uart_pos] = ser_uart->getc();
@@ -100,13 +116,18 @@ void uart_serial_isr()
             }
         }
     }
+    #endif
 }
-
+#endif
+#ifdef UART_SERIAL_ENABLED
 void uart_serial_init(Serial* s)
 {
     ser_uart = s;
     s->attach(uart_serial_isr);
 }
+#endif
+#ifdef UART_SERIAL_ENABLED
+extern const int PUB_CHANNEL_SERIAL;
 
 void uart_serial_pub()
 {

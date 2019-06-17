@@ -32,6 +32,15 @@
 extern Serial serial;
 extern CAN can;
 
+#define PIN_CAN_RX    PB_8
+#define PIN_CAN_TX    PB_9
+#define PIN_CAN_STB PA_15
+#define CAN_SPEED 250000    // 250 kHz
+#define CAN_NODE_ID 10
+
+CAN can(PIN_CAN_RX, PIN_CAN_TX, CAN_SPEED);
+DigitalOut can_disable(PIN_CAN_STB);
+
 CANMsgQueue can_tx_queue;
 CANMsgQueue can_rx_queue;
 
@@ -49,10 +58,24 @@ CANMsgQueue can_rx_queue;
 // Protocol details:
 // https://github.com/LibreSolar/ThingSet/blob/master/can.md
 
-static uint8_t can_node_id = 42;
+static uint8_t can_node_id = CAN_NODE_ID;
 
-void can_pub_msg(const data_object_t& data_obj)
+void can_init_hw()
 {
+    can_disable = 0;
+    can.mode(CAN::Normal);
+    //can.attach(&can_receive);
+
+    // TXFP: Transmit FIFO priority driven by request order (chronologically)
+    // NART: No automatic retransmission
+    CAN1->MCR |= CAN_MCR_TXFP | CAN_MCR_NART;
+
+}
+
+bool can_pub_msg(const data_object_t& data_obj)
+{
+    bool retval = true; // we set it to false if we don't know how to encode the object
+
     union float2bytes { float f; char b[4]; } f2b;     // for conversion of float to single bytes
 
     int msg_priority = 6;
@@ -143,10 +166,14 @@ void can_pub_msg(const data_object_t& data_obj)
                 msg.data[0] = CAN_TS_T_FALSE;     // simple type: false
             }
             break;
-        case TS_T_STRING:
-            break;
+        default:
+            retval = false;
     }
-    can_tx_queue.enqueue(msg);
+    if (retval)
+    {
+        can_tx_queue.enqueue(msg);
+    }
+    return retval;
 }
 
 /**
@@ -163,12 +190,13 @@ int ThingSet::pub_msg_can(unsigned int channel)
         for (unsigned int element = 0; element < num_elements; element++)
         {
             const data_object_t *data_obj = get_data_object(pub_channels[channel].object_ids[element]);
-            if (data_obj == NULL || !(data_obj->access & TS_ACCESS_READ))
+            if (data_obj != NULL && data_obj->access & TS_ACCESS_READ)
             {
-                continue;
+                if (can_pub_msg(*data_obj))
+                {
+                    retval++;
+                }  
             }
-            can_pub_msg(*data_obj);
-            retval++;  
         }
     }
     return retval;

@@ -41,7 +41,12 @@
 #include "data_objects.h"       // for access to internal data via ThingSet
 #include "thingset_serial.h"    // UART or USB serial communication
 
+#ifdef UART_SERIAL_ENABLED
 Serial serial(PIN_SWD_TX, PIN_SWD_RX, "serial");
+#endif
+#ifdef CAN_ENABLED
+extern void can_init_hw(); // HACK
+#endif
 
 dcdc_t dcdc = {};
 dc_bus_t hs_bus = {};           // high-side (solar for typical MPPT)
@@ -101,7 +106,9 @@ void system_control()
  */
 int main()
 {
+    #ifdef UART_SERIAL_ENABLED
     serial.baud(115200);
+    #endif
 
     leds_init();
 
@@ -134,8 +141,12 @@ int main()
 
     // Communication interfaces
     #ifdef UART_SERIAL_ENABLED
-    uart_serial_init(&serial);
+    thingset_serial_init(&serial);
     #endif
+    #ifdef CAN_ENABLED
+    can_init_hw();
+    #endif
+
     uext_init();
     init_watchdog(10);      // 10s should be enough for communication ports
 
@@ -159,7 +170,6 @@ int main()
 
     wait(2);    // safety feature: be able to re-flash before starting
     control_timer_start(CONTROL_FREQUENCY);
-    wait(0.1);  // necessary to prevent MCU from randomly getting stuck here if PV panel is connected before battery
 
     // the main loop is suitable for slow tasks like communication (even blocking wait allowed)
     time_t last_call = timestamp;
